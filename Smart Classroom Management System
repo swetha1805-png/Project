@@ -1,0 +1,257 @@
+# SMART CLASSROOM MANAGEMENT SYSTEM
+
+import pandas as pd
+from datetime import datetime
+import matplotlib.pyplot as plt
+import pywhatkit
+
+students = []
+
+#  DATE & TIME 
+def current_datetime():
+    print("\n DATE AND TIME ")
+    now = datetime.now()
+    print("Date :", now.date())
+    print("Time :", now.strftime("%H:%M:%S"))
+    
+#  TXT FILE SAVE 
+def save_data():
+    with open("students.txt", "w") as file:
+        for student in students:
+            line = (
+                f"{student['ID']},"
+                f"{student['Name']},"
+                f"{student['Marks']},"
+                f"{student['Attendance']}\n")
+            file.write(line)
+
+#  TXT FILE LOAD 
+def load_data():
+    global students
+    students = []
+    try:
+        with open("students.txt", "r") as file:
+            for line in file:
+                sid, name, marks, attendance = (
+                    line.strip().split(","))
+                student = {
+                    "ID": int(sid),
+                    "Name": name,
+                    "Marks": int(marks),
+                    "Attendance": attendance}
+                students.append(student)
+    except FileNotFoundError:
+        print("No Previous Records Found")
+
+# ADD STUDENT 
+def add_student():
+    print("\n ADD STUDENT ")
+    sid = int(input("Enter Student ID : "))
+    name = input("Enter Student Name : ")
+    marks = int(input("Enter Student Marks : "))
+    student = {
+        "ID": sid,
+        "Name": name,
+        "Marks": marks,
+        "Attendance": "Not Marked"}
+    students.append(student)
+    save_data()
+    print("\nStudent Added Successfully")
+
+# VIEW STUDENTS 
+def view_students():
+    print("\n STUDENT DETAILS ")
+    if len(students) == 0:
+        print("No Student Records")
+    else:
+        df = pd.DataFrame(students)
+        print(df)
+
+#  SEARCH STUDENT 
+def search_student():
+    print("\n SEARCH STUDENT ")
+    sid = int(input("Enter Student ID : "))
+    found = False
+    for student in students:
+        if student["ID"] == sid:
+            print(student)
+            found = True
+    if found == False:
+        print("Student Not Found")
+
+#  DELETE STUDENT 
+def delete_student():
+    print("\n DELETE STUDENT ")
+    sid = int(input("Enter Student ID : "))
+    found = False
+    for student in students:
+        if student["ID"] == sid:
+            students.remove(student)
+            save_data()
+            print("Student Deleted")
+            found = True
+            break
+    if found == False:
+        print("Student Not Found")
+
+#  UPDATE MARKS 
+def update_marks():
+    print("\n UPDATE MARKS ")
+    sid = int(input("Enter Student ID : "))
+    found = False
+    for student in students:
+        if student["ID"] == sid:
+            new_marks = int(input("Enter New Marks : "))
+            student["Marks"] = new_marks
+            save_data()
+            print("Marks Updated")
+            found = True
+    if not found:
+        print("Student Not Found")
+
+#  MARK ATTENDANCE 
+def mark_attendance():
+    print("\n ATTENDANCE ")
+    for student in students:
+        status = input(
+            f"{student['Name']} Present/Absent : ")
+        student["Attendance"] = status
+        save_data()
+    print("\nAttendance Marked Successfully")
+
+# ATTENDANCE REPORT 
+
+def attendance_report():
+    print("\n ATTENDANCE REPORT ")
+    for student in students:
+        print(
+            student["Name"],"->",
+            student["Attendance"])
+
+# PERFORMANCE REPORT 
+def performance_report():
+    print("\n=== PERFORMANCE REPORT ===")
+    for student in students:
+        marks = student["Marks"]
+        if marks >= 90:
+            grade = "A+"
+        elif marks >= 75:
+            grade = "A"
+        elif marks >= 60:
+            grade = "B"
+        elif marks >= 40:
+            grade = "C"
+        else:
+            grade = "FAIL"
+        print(
+            student["Name"],
+            "Marks :",marks,
+            "Grade :",grade)
+
+# TOPPER STUDENT 
+def topper_student():
+    print("\n TOPPER STUDENT ")
+    if len(students) == 0:
+        print("No Student Data")
+    else:
+        topper = max(
+            students,
+            key=lambda x: x["Marks"])
+        print(topper)
+
+# ================= MARKS GRAPH =================
+def marks_graph():
+    print("\n MARKS GRAPH")
+    names = []
+    marks = []
+    for student in students:
+        names.append(student["Name"])
+        marks.append(student["Marks"])
+    plt.bar(names, marks)
+    plt.title("Student Marks")
+    plt.xlabel("Student Name")
+    plt.ylabel("Marks")
+    plt.show()
+
+# ATTENDANCE GRAPH 
+def attendance_graph():
+    print("\n ATTENDANCE GRAPH ")
+    present = 0
+    absent = 0
+    for student in students:
+        if student["Attendance"].lower() == "present":
+            present += 1
+        else:
+            absent += 1
+    labels = ["Present", "Absent"]
+    values = [present, absent]
+    plt.pie(values, labels=labels, autopct="%1.1f%%")
+    plt.title("Attendance Report")
+    plt.show()
+
+#  WHATSAPP MESSAGE 
+def whatsapp_message():
+    message = input("Enter Message : ")
+    numbers = [
+        "+916380613874",
+        "+917010990729"]
+    for number in numbers:
+        pywhatkit.sendwhatmsg_instantly(
+            number,
+            message,
+            wait_time=15)
+    print("Messages Sent Successfully")
+
+#  LOAD OLD DATA 
+load_data()
+
+#  MAIN MENU 
+while True:
+    print("\n")
+    print("1. Date and time")
+    print("2. Add Student")
+    print("3. View Students")
+    print("4. Search Student")
+    print("5. Delete Student")
+    print("6. Update Marks")
+    print("7. Mark Attendance")
+    print("8. Attendance Report")
+    print("9. Performance Report")
+    print("10. Topper Student")
+    print("11. Marks Graph")
+    print("12. Attendance Graph")
+    print("13. Send WhatsApp Message")
+    print("14. Exit")
+
+    choice = int(input("\nEnter Your Choice : "))
+    if choice == 1:
+        current_datetime()
+    elif choice == 2:
+         add_student()
+    elif choice == 3:
+        view_students()
+    elif choice == 4:
+        search_student()
+    elif choice == 5:
+        delete_student()
+    elif choice == 6:
+        update_marks()
+    elif choice == 7:
+        mark_attendance()
+    elif choice == 8:
+        attendance_report()
+    elif choice == 9:
+        performance_report()
+    elif choice == 10:
+        topper_student()
+    elif choice == 11:
+        marks_graph()
+    elif choice == 12:
+        attendance_graph()
+    elif choice == 13:
+        whatsapp_message()
+    elif choice == 14:
+        print("\nTHANK YOU")
+        break
+    else:
+        print("\nINVALID CHOICE")  
