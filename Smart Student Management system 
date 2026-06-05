@@ -1,0 +1,788 @@
+from tkinter import *
+from tkinter import ttk, messagebox
+import sqlite3
+import matplotlib.pyplot as plt
+import cv2
+import os
+import numpy as np
+from PIL import Image
+import pywhatkit as kit
+from datetime import date, datetime
+import winsound
+
+# ================= DATABASE =================
+conn = sqlite3.connect("student.db")
+cur = conn.cursor()
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT)""")
+
+cur.execute("""
+INSERT OR IGNORE INTO users(username,password,role)
+VALUES('admin','admin123','Admin')""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS students(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    department TEXT,
+    year INTEGER,
+    phone TEXT,
+    subject TEXT,
+    marks INTEGER
+    )""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS attendance(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    date TEXT,
+    status TEXT)""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS marks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    subject TEXT,
+    marks INTEGER)""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS face_logs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    student_name TEXT,
+    date TEXT,
+    time TEXT)""")
+
+conn.commit()
+conn.close()
+
+# ================= MAIN =================
+root = Tk()
+root.title("Smart Student System")
+root.geometry("1800x850")
+
+student_count_label = Label(
+    root,
+    text="",
+    font=("Arial",8,"bold"),
+    fg="blue")
+
+student_count_label.pack()
+
+def update_dashboard():
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM students")
+    total_students = cur.fetchone()[0]
+
+    cur.execute("""
+    SELECT COUNT(*)
+    FROM attendance
+    WHERE status='Present'""")
+    total_present = cur.fetchone()[0]
+
+    cur.execute("""
+    SELECT COUNT(*)
+    FROM attendance
+    WHERE status='Absent'
+    """)
+    total_absent = cur.fetchone()[0]
+    conn.close()
+    student_count_label.config(
+        text=f"Total Students: {total_students}   |   Present: {total_present}   |   Absent: {total_absent}")
+    
+def login_window():
+
+    login = Toplevel(root)
+    login.title("Login System")
+    login.geometry("350x350")
+
+    user_var = StringVar()
+    pass_var = StringVar()
+
+    Label(login,
+          text="Student Management Login",
+          font=("Arial",10,"bold")).pack(pady=10)
+
+    Label(login,text="Username").pack()
+    Entry(login,textvariable=user_var).pack()
+
+    Label(login,text="Password").pack()
+    Entry(login,textvariable=pass_var,show="*").pack()
+
+    def check_login():
+
+        conn = sqlite3.connect("student.db")
+        cur = conn.cursor()
+
+        cur.execute("""
+        SELECT * FROM users
+        WHERE username=? AND password=?
+        """,(user_var.get(),pass_var.get()))
+
+        data = cur.fetchone()
+        conn.close()
+        if data:
+            messagebox.showinfo(
+                "Success",
+                f"Welcome {data[1]}")
+            login.destroy()
+        else:
+            messagebox.showerror(
+                "Error",
+                "Invalid Username or Password")
+
+    Button(
+        login,
+        text="Login",
+        command=check_login
+    ).pack(pady=10)
+
+    root.withdraw()
+    login.wait_window()
+    root.deiconify()
+
+
+# ================= VARIABLES =================
+name_var = StringVar()
+dept_var = StringVar()
+year_var = StringVar()
+phone_var = StringVar()
+subject_var = StringVar()
+marks_var = StringVar()
+search_var = StringVar()
+selected_id = 0
+
+# ================= FUNCTIONS =================
+
+def clear_fields():
+    global selected_id
+    name_var.set("")
+    dept_var.set("")
+    year_var.set("")
+    phone_var.set("")
+    subject_var.set("")
+    marks_var.set("")
+    selected_id = 0
+
+
+def view_students():
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM students")
+    rows = cur.fetchall()
+    conn.close()
+
+    tree.delete(*tree.get_children())
+    for r in rows:
+        tree.insert("", END, values=r)
+
+def search_student():
+
+    key = search_var.get()
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT * FROM students
+    WHERE name LIKE ?
+    OR department LIKE ?
+    OR phone LIKE ?
+    """, (
+        f"%{key}%",
+        f"%{key}%",
+        f"%{key}%"))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    tree.delete(*tree.get_children())
+
+    for row in rows:
+        tree.insert("", END, values=row)
+
+
+def save_student():
+    if name_var.get() == "" or dept_var.get() == "":
+        messagebox.showerror("Error", "Fill all fields")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO students(name, department, year, phone, subject, marks)
+        VALUES(?,?,?,?,?,?)
+    """, (
+        name_var.get(),
+        dept_var.get(),
+        year_var.get(),
+        phone_var.get(),
+        subject_var.get(),
+        int(marks_var.get()) if marks_var.get().isdigit() else 0
+    ))
+
+    conn.commit()
+    conn.close()
+
+    messagebox.showinfo("Success", "Student Added")
+    view_students()
+    update_dashboard()
+    clear_fields()
+    
+def update_student():
+    global selected_id
+
+    if selected_id == 0:
+        messagebox.showerror("Error", "Select student")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+    cur.execute("""
+    UPDATE students
+    SET name=?, department=?, year=?, phone=?, subject=?, marks=?
+    WHERE id=?
+""", (
+    name_var.get(),
+    dept_var.get(),
+    int(year_var.get()) if year_var.get().isdigit() else 0,
+    phone_var.get(),
+    subject_var.get(),
+    int(marks_var.get()) if marks_var.get().isdigit() else 0,
+    selected_id
+))
+    
+    conn.commit()
+    conn.close()
+
+    messagebox.showinfo("Success", "Student Updated")
+    view_students()
+    clear_fields()
+    
+def get_data(event):
+    global selected_id
+    row = tree.item(tree.focus())["values"]
+    if not row:
+        return
+
+    selected_id = row[0]
+    name_var.set(row[1])
+    dept_var.set(row[2])
+    year_var.set(row[3])
+    phone_var.set(row[4])             
+
+
+def delete_student():
+    global selected_id
+
+    if selected_id == 0:
+        messagebox.showerror("Error","Select student")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM students WHERE id=?", (selected_id,))
+    conn.commit()
+    conn.close()
+
+    messagebox.showinfo("Success","Deleted")
+    view_students()
+    update_dashboard()
+    clear_fields()
+
+
+def mark_attendance(status):
+    if selected_id == 0:
+        messagebox.showerror("Error","Select student")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO attendance(student_id,date,status)
+        VALUES(?,date('now'),?)
+    """, (selected_id,status))
+
+    cur.execute("SELECT name, phone FROM students WHERE id=?", (selected_id,))
+    data = cur.fetchone()
+
+    conn.commit()
+    conn.close()
+
+    messagebox.showinfo("Success", f"Marked {status}")
+    update_dashboard()
+
+    if data:
+        name, phone = data
+
+        if phone and not phone.startswith("+"):
+            phone = "+91" + phone
+
+        send_whatsapp(phone, name, status)
+
+def attendance_graph():
+    if selected_id == 0:
+        messagebox.showerror("Error","Select student")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT status,COUNT(*)
+        FROM attendance
+        WHERE student_id=?
+        GROUP BY status
+    """, (selected_id,))
+    data = cur.fetchall()
+    conn.close()
+
+    if data:
+        plt.bar([i[0] for i in data],[i[1] for i in data])
+        plt.title("Attendance Graph")
+        plt.show()
+
+
+def view_attendance():
+
+    if selected_id == 0:
+        messagebox.showerror(
+            "Error",
+            "Select a student from the table first"
+        )
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT date, status
+    FROM attendance
+    WHERE student_id=?
+    """, (selected_id,))
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    win = Toplevel(root)
+    win.title("Attendance Records")
+    win.geometry("500x300")
+
+    tree2 = ttk.Treeview(
+        win,
+        columns=("Date", "Status"),
+        show="headings"
+    )
+
+    tree2.heading("Date", text="Date")
+    tree2.heading("Status", text="Status")
+
+    tree2.column("Date", width=200)
+    tree2.column("Status", width=150)
+
+    tree2.pack(fill=BOTH, expand=True)
+
+    if len(rows) == 0:
+        messagebox.showinfo(
+            "Attendance",
+            "No attendance records found for this student"
+        )
+
+    for row in rows:
+        tree2.insert("", END, values=row)
+        
+def add_marks():
+    if selected_id == 0:
+        messagebox.showerror("Error","Select student")
+        return
+
+    if marks_var.get().isdigit() == False:
+        messagebox.showerror("Error","Marks must be number")
+        return
+
+    conn = sqlite3.connect("student.db")
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO marks(student_id,subject,marks)
+        VALUES(?,?,?)
+    """, (selected_id, subject_var.get(), int(marks_var.get())))
+    conn.commit()
+    conn.close()
+
+    messagebox.showinfo("Success","Marks Added")
+
+
+def clean_phone(phone):
+    phone = str(phone).strip()
+
+    if phone == "" or phone.lower() == "none":
+        return None
+
+    if phone.startswith("+"):
+        return phone
+
+    if len(phone) == 10:
+        return "+91" + phone
+
+    if not phone.startswith("+"):
+        phone = "+91" + phone
+
+    return phone
+
+def send_whatsapp(phone, name, status):
+    try:
+        phone = clean_phone(phone)
+        if not phone:
+            return
+
+        message = (
+            f"📢 Attendance Update\n\n"
+            f"Name: {name}\n"
+            f"Status: {status}\n"
+            f"Date: {date.today()}"
+        )
+
+        kit.sendwhatmsg_instantly(
+            phone_no=phone,
+            message=message,
+            wait_time=15,
+            tab_close=True,
+            close_time=5
+        )
+
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
+def dataset_creator():
+
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+
+    if selected_id == 0:
+        messagebox.showerror("Error", "Please select a student first")
+        return
+
+    user_id = selected_id
+    user_name = name_var.get()
+
+    cam = cv2.VideoCapture(0)
+
+    path = f"faces/{user_id}_{user_name}"
+    os.makedirs(path, exist_ok=True)
+
+    count = 0
+
+    while True:
+        ret, frame = cam.read()
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+        for (x, y, w, h) in faces:
+            count += 1
+
+            cv2.imwrite(
+                f"{path}/{count}.jpg",
+                gray[y:y+h, x:x+w]
+            )
+
+            cv2.rectangle(
+                frame,
+                (x, y),
+                (x+w, y+h),
+                (0, 255, 0),
+                2
+            )
+
+        cv2.imshow("Dataset Capture", frame)
+
+        if cv2.waitKey(1) == 13 or count >= 50:
+            break
+
+    cam.release()
+    cv2.destroyAllWindows()
+
+    messagebox.showinfo(
+        "Success",
+        f"{count} face images captured"
+    )
+
+def train_model():
+    try:
+        messagebox.showinfo("Debug", "Training Started")
+
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+
+        faces = []
+        labels = []
+
+        for folder in os.listdir("faces"):
+            path = os.path.join("faces", folder)
+
+            if not os.path.isdir(path):
+                continue
+
+            messagebox.showinfo("Folder Found", folder)
+
+            label = int(folder.split("_")[0])
+
+            for img in os.listdir(path):
+                img_path = os.path.join(path, img)
+
+                image = Image.open(img_path).convert("L")
+                img_np = np.array(image, "uint8")
+
+                faces.append(img_np)
+                labels.append(label)
+
+        messagebox.showinfo(
+            "Debug",
+            f"Faces Loaded: {len(faces)}"
+        )
+
+        recognizer.train(faces, np.array(labels))
+
+        os.makedirs("trainer", exist_ok=True)
+        recognizer.save("trainer/classifier.xml")
+
+        messagebox.showinfo(
+            "Success",
+            "Model Trained Successfully"
+        )
+
+    except Exception as e:
+        messagebox.showerror("Train Error", str(e))
+        
+def face_recognition():
+    try:
+        import cv2
+        import os
+        import sqlite3
+        from datetime import date, datetime
+
+        # ---------- CHECK MODEL ----------
+        model_path = "trainer/classifier.xml"
+        if not os.path.exists(model_path):
+            messagebox.showerror("Error", "Model not found. Please train first.")
+            return
+
+        # ---------- FACE DETECTOR ----------
+        face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        recognizer.read(model_path)
+
+        cam = cv2.VideoCapture(0)
+
+        today = date.today().strftime("%Y-%m-%d")
+
+        while True:
+            ret, frame = cam.read()
+            if not ret:
+                break
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+            for (x, y, w, h) in faces:
+                face = gray[y:y+h, x:x+w]
+
+                id_, conf = recognizer.predict(face)
+
+                name = "Unknown"
+
+                if conf < 70:
+                    conn = sqlite3.connect("student.db")
+                    cur = conn.cursor()
+
+                    cur.execute("SELECT name, phone FROM students WHERE id=?", (id_,))
+                    data = cur.fetchone()
+
+                    if data:
+                        name, phone = data
+
+                        # ---------- AUTO ATTENDANCE (NO DUPLICATE) ----------
+                        cur.execute("""
+                            SELECT * FROM attendance
+                            WHERE student_id=? AND date=?
+                        """, (id_, today))
+
+                        already_marked = cur.fetchone()
+
+                        if not already_marked:
+                            cur.execute("""
+                                INSERT INTO attendance(student_id, date, status)
+                                VALUES(?, ?, 'Present')
+                            """, (id_, today))
+
+                            conn.commit()
+
+                            # update dashboard safely
+                            try:
+                                update_dashboard()
+                            except:
+                                pass
+
+                            print(f"[ATTENDANCE] Marked Present for {name}")
+
+                            # OPTIONAL WHATSAPP
+                            try:
+                                if phone and phone != "None":
+                                    if not str(phone).startswith("+91"):
+                                        phone = "+91" + str(phone)
+
+                                    send_whatsapp(phone, name, "Present")
+                            except:
+                                pass
+
+                    conn.close()
+
+                text = f"{name} ({id_})" if conf < 70 else "Unknown"
+
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                cv2.putText(frame, text, (x, y-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+
+            cv2.imshow("Face Recognition Attendance", frame)
+
+            if cv2.waitKey(1) == 13:  # Enter key
+                break
+
+        cam.release()
+        cv2.destroyAllWindows()
+
+    except Exception as e:
+        messagebox.showerror("Recognition Error", str(e))
+
+def mark_absent_students():
+    try:
+        conn = sqlite3.connect("student.db")
+        cur = conn.cursor()
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
+        cur.execute("SELECT id, name, phone FROM students")
+        students = cur.fetchall()
+
+        for student_id, student_name, phone in students:
+
+            # check attendance already exists
+            cur.execute("""
+                SELECT *
+                FROM attendance
+                WHERE student_id=? AND date=?
+            """, (student_id, current_date))
+
+            record = cur.fetchone()
+
+            if not record:
+
+                # mark absent
+                cur.execute("""
+                    INSERT INTO attendance(student_id, date, status)
+                    VALUES(?, ?, ?)
+                """, (student_id, current_date, "Absent"))
+
+                conn.commit()
+                winsound.MessageBeep()
+
+                winsound.Beep(700, 500)
+
+                # ---------------- WHATSAPP ----------------
+                try:
+                    phone = str(phone).strip()
+
+                    # clean phone safely
+                    if phone == "" or phone.lower() == "none":
+                        continue
+
+                    if not phone.startswith("+"):
+                        phone = "+91" + phone
+
+                    message = f"{student_name} is ABSENT today ({current_date})"
+
+                    kit.sendwhatmsg_instantly(
+                        phone_no=phone,
+                        message=message,
+                        wait_time=10,
+                        tab_close=True,
+                        close_time=5
+                    )
+
+                except Exception as e:
+                    print("WhatsApp Error:", e)
+
+        conn.close()
+        update_dashboard()
+
+        messagebox.showinfo(
+            "Success",
+            "Absent students marked successfully")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+    
+
+# ================= UI =================
+
+Label(root,text="SMART STUDENT SYSTEM",font=("Arial",20,"bold")).pack(pady=10)
+Label(root,text="Name").place(x=50,y=80)
+Entry(root,textvariable=name_var).place(x=150,y=80)
+Label(root,text="Dept").place(x=50,y=120)
+Entry(root,textvariable=dept_var).place(x=150,y=120)
+Label(root,text="Year").place(x=50,y=160)
+Entry(root,textvariable=year_var).place(x=150,y=160)
+Label(root,text="Phone").place(x=50,y=200)
+Entry(root,textvariable=phone_var).place(x=150,y=200)
+Label(root,text="Subject").place(x=50,y=240)
+Entry(root,textvariable=subject_var).place(x=150,y=240)
+Label(root,text="Marks").place(x=50,y=280)
+Entry(root,textvariable=marks_var).place(x=150,y=280)
+Button(root, text="Add Student", command=save_student).place(x=50, y=320)
+Button(root, text="Update", command=update_student).place(x=180, y=320)
+Button(root, text="Delete", command=delete_student).place(x=300, y=320)
+Button(root, text="View Students", command=view_students).place(x=420, y=320)
+Button(root, text="Present", command=lambda: mark_attendance("Present")).place(x=50, y=380)
+Button(root, text="Absent", command=lambda: mark_attendance("Absent")).place(x=180, y=380)
+Button(root, text="Attendance Graph", command=attendance_graph).place(x=300, y=380)
+Button(root, text="View Attendance", command=view_attendance).place(x=480, y=380)
+Button(root, text="Add Marks", command=add_marks).place(x=50, y=440)
+Label(root, text="Search").place(x=50, y=540)
+Entry(root, textvariable=search_var, width=25).place(x=120, y=540)
+Button(root, text="Search Student", command=search_student).place(x=300, y=535)
+Button(root, text="Capture Face Dataset", command=dataset_creator).place(x=50, y=590)
+Button(root, text="Train Model", command=train_model).place(x=250, y=590)
+Button(root, text="Start Recognition", command=face_recognition).place(x=450, y=590)
+Button(root, text="Mark Absent", command=mark_absent_students).place(x=650, y=590)
+
+# TABLE
+tree = ttk.Treeview(root,
+    columns=("ID","Name","Dept","Year","Phone","Subject","Marks"),
+    show="headings"
+)
+for c in ("ID","Name","Dept","Year","Phone","Subject","Marks"):
+    tree.heading(c,text=c)
+    tree.column(c,width=120)
+
+tree.place(x=800,y=80,width=950,height=450)
+tree.bind("<ButtonRelease-1>",get_data)
+
+login_window()
+view_students()
+update_dashboard()
+
+root.mainloop()
